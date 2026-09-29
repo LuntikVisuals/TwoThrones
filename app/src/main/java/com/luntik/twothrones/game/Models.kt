@@ -7,28 +7,34 @@ data class ReligionShare(
     val percent: Int
 )
 
+data class Region(
+    val id: String,
+    val name: String,
+    val row: Int,
+    val col: Int,
+    var ownerId: String,
+    val income: Int = 20
+)
+
 data class Country(
     val id: String,
     val name: String,
     val side: Side,
     val isPlayer: Boolean = false,
     var money: Int = 1000,
-    var relationsToPlayer: Int = 50, // 0..100
+    var relationsToPlayer: Int = 50,
     var recognizedByPlayer: Boolean = false,
     var stability: Int = 70,
     var happiness: Int = 60,
-    var warFatigue: Int = 0, // 0..100
+    var warFatigue: Int = 0,
     val religions: List<ReligionShare> = listOf(
         ReligionShare("Христианство", 50),
         ReligionShare("Вальхалла", 30),
         ReligionShare("Ислам", 20)
     )
 ) {
-    /** Без признания отношения не выше 50 */
     fun effectiveRelationsCap(): Int = if (recognizedByPlayer) 100 else 50
-
-    fun clampedRelations(): Int =
-        relationsToPlayer.coerceIn(0, effectiveRelationsCap())
+    fun clampedRelations(): Int = relationsToPlayer.coerceIn(0, effectiveRelationsCap())
 }
 
 data class War(
@@ -40,14 +46,21 @@ data class War(
     var endYear: Int? = null,
     var peaceName: String? = null
 ) {
-    fun duration(currentYear: Int): Int =
-        (endYear ?: currentYear) - startYear
+    fun duration(currentYear: Int): Int = (endYear ?: currentYear) - startYear
 }
 
 data class NewsItem(
     val year: Int,
     val text: String,
     val spyDetail: String? = null
+)
+
+data class ShopItem(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val priceSilver: Int,
+    val section: String
 )
 
 object WarFatigue {
