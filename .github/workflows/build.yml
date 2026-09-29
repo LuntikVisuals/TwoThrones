@@ -1,0 +1,65 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          accept-android-sdk-licenses: true
+
+      - name: Accept licenses
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Gradle wrapper
+        run: |
+          gradle wrapper --gradle-version 8.9 || true
+          chmod +x gradlew || true
+
+      - name: Build
+        run: |
+          if [ -f ./gradlew ]; then ./gradlew assembleDebug --stacktrace --no-daemon
+          else gradle assembleDebug --stacktrace --no-daemon; fi
+
+      - name: Pack APK
+        if: success()
+        run: |
+          mkdir -p release
+          cp app/build/outputs/apk/debug/*.apk release/TwoThrones.apk
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: twothrones-debug-apk
+          path: release/TwoThrones.apk
+          retention-days: 14
+
+      - uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: latest
+          name: TwoThrones latest
+          files: release/TwoThrones.apk
+          draft: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
