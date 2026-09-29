@@ -1,5 +1,6 @@
 package com.luntik.twothrones
 
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -19,15 +20,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.luntik.twothrones.game.Country
 import com.luntik.twothrones.game.GameState
+import com.luntik.twothrones.game.NewsItem
+import com.luntik.twothrones.game.Region
 import com.luntik.twothrones.game.Side
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         enableEdgeToEdge()
         setContent { AppRoot() }
     }
@@ -44,9 +50,12 @@ private object T {
     val Light = Color(0xFFFFD56A)
     val Dark = Color(0xFFFF6B7A)
     val Green = Color(0xFF5CFFB0)
+    val Player = Color(0xFF5B8CFF)
+    val Ally = Color(0xFF6BCB77)
+    val Enemy = Color(0xFFE74C3C)
 }
 
-private enum class Screen { Lobby, Match }
+private enum class Screen { Lobby, Shop, Match }
 
 @Composable
 fun AppRoot() {
@@ -60,7 +69,13 @@ fun AppRoot() {
     ) {
         when (screen) {
             Screen.Lobby -> LobbyScreen(
-                onPlay = { screen = Screen.Match }
+                game = game,
+                onPlay = { screen = Screen.Match },
+                onShop = { screen = Screen.Shop }
+            )
+            Screen.Shop -> ShopScreen(
+                game = game,
+                onBack = { screen = Screen.Lobby }
             )
             Screen.Match -> MatchScreen(
                 game = game,
@@ -71,27 +86,28 @@ fun AppRoot() {
 }
 
 @Composable
-private fun LobbyScreen(onPlay: () -> Unit) {
+private fun LobbyScreen(game: GameState, onPlay: () -> Unit, onShop: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
             .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(20.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Column {
             Text("Два Престола", color = T.Text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Text("Свет и Тьма · свои государства в союзе", color = T.Dim, fontSize = 14.sp)
+            Text("Свет и Тьма · карта регионов", color = T.Dim, fontSize = 14.sp)
             Spacer(Modifier.height(20.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                CurrencyChip("Серебро", "1200")
-                CurrencyChip("Золото", "40")
-                CurrencyChip("Кристаллы", "5")
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CurrencyChip("Серебро", "${game.silver}")
+                CurrencyChip("Золото", "${game.gold}")
+                CurrencyChip("Кристаллы", "${game.crystals}")
             }
             Spacer(Modifier.height(24.dp))
-            MenuCard("Магазин", "Правители и армия · ротация 24ч")
+            MenuCard("Магазин", "Правители и армия") { onShop() }
             Spacer(Modifier.height(10.dp))
-            MenuCard("Коллекция", "6 правителей · 10 типов войск")
+            MenuCard("Коллекция", "6 правителей · 10 типов войск") { }
         }
         Column {
             Box(
@@ -105,7 +121,7 @@ private fun LobbyScreen(onPlay: () -> Unit) {
             ) {
                 Text("ИГРАТЬ", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(12.dp))
         }
     }
 }
@@ -125,13 +141,14 @@ private fun CurrencyChip(label: String, value: String) {
 }
 
 @Composable
-private fun MenuCard(title: String, subtitle: String) {
+private fun MenuCard(title: String, subtitle: String, onClick: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(T.Card)
             .border(1.dp, T.Border, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
             .padding(14.dp)
     ) {
         Text(title, color = T.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -140,26 +157,95 @@ private fun MenuCard(title: String, subtitle: String) {
 }
 
 @Composable
-private fun MatchScreen(game: GameState, onBack: () -> Unit) {
-    var tab by remember { mutableStateOf(0) } // 0 map, 1 news, 2 country
-    var selectedId by remember { mutableStateOf<String?>(null) }
+private fun ShopScreen(game: GameState, onBack: () -> Unit) {
+    var toast by remember { mutableStateOf<String?>(null) }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(16.dp)
+    ) {
+        Text("← Назад", color = T.Accent, modifier = Modifier.clickable(onClick = onBack))
+        Spacer(Modifier.height(8.dp))
+        Text("Магазин", color = T.Text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text("Серебро: ${game.silver}", color = T.Green, fontSize = 14.sp)
+        toast?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, color = T.Accent, fontSize = 13.sp)
+        }
+        Spacer(Modifier.height(12.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val sections = game.shopItems.groupBy { it.section }
+            sections.forEach { (section, items) ->
+                item {
+                    Text(section, color = T.Light, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 6.dp))
+                }
+                items(items, key = { it.id }) { item ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(T.Card)
+                            .border(1.dp, T.Border, RoundedCornerShape(12.dp))
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(item.title, color = T.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text(item.subtitle, color = T.Dim, fontSize = 12.sp)
+                        }
+                        Text(
+                            if (item.priceSilver <= 0) "Есть" else "${item.priceSilver} Ag",
+                            color = if (item.priceSilver <= 0) T.Green else T.Accent,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(T.Card)
+                                .clickable {
+                                    toast = game.buyShopItem(item)
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
+@Composable
+private fun MatchScreen(game: GameState, onBack: () -> Unit) {
+    var tab by remember { mutableIntStateOf(0) } // 0 map, 1 news
+    var selectedCountryId by remember { mutableStateOf<String?>(null) }
+    var selectedRegionId by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf<String?>(null) }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+    ) {
+        // top bar
         Row(
-            Modifier.fillMaxWidth().padding(16.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("← Лобби", color = T.Accent, fontSize = 14.sp, modifier = Modifier.clickable(onClick = onBack))
+            Text("← Выход", color = T.Accent, fontSize = 14.sp, modifier = Modifier.clickable(onClick = onBack))
             Text("Год ${game.year}", color = T.Light, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Text("${game.playerMoney}💰", color = T.Green, fontSize = 14.sp)
         }
 
         Row(
             Modifier.padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            listOf("Страны", "Новости").forEachIndexed { i, label ->
+            listOf("Карта", "Новости").forEachIndexed { i, label ->
                 val sel = tab == i
                 Text(
                     label,
@@ -169,7 +255,11 @@ private fun MatchScreen(game: GameState, onBack: () -> Unit) {
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
                         .background(if (sel) T.Card else Color.Transparent)
-                        .clickable { tab = i; selectedId = null }
+                        .clickable {
+                            tab = i
+                            selectedCountryId = null
+                            selectedRegionId = null
+                        }
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 )
             }
@@ -182,68 +272,159 @@ private fun MatchScreen(game: GameState, onBack: () -> Unit) {
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .background(T.Accent)
-                    .clickable { game.nextYear() }
+                    .clickable { game.nextYear(); status = "Год ${game.year}. Доход с земель." }
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             )
         }
 
-        Spacer(Modifier.height(8.dp))
+        status?.let {
+            Text(it, color = T.Dim, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        }
 
         when {
-            selectedId != null -> {
-                val c = game.countries.find { it.id == selectedId }
-                if (c != null) CountryPanel(game, c) { selectedId = null }
-                else selectedId = null
+            selectedCountryId != null -> {
+                val c = game.country(selectedCountryId!!)
+                if (c != null) CountryPanel(game, c) {
+                    selectedCountryId = null
+                    status = null
+                } else selectedCountryId = null
+            }
+            selectedRegionId != null -> {
+                val reg = game.regions.find { it.id == selectedRegionId }
+                if (reg != null) RegionPanel(game, reg,
+                    onClose = { selectedRegionId = null; status = null },
+                    onOpenCountry = { selectedCountryId = it; selectedRegionId = null },
+                    onCapture = {
+                        status = game.tryCapture(reg.id)
+                        selectedRegionId = null
+                    }
+                ) else selectedRegionId = null
             }
             tab == 1 -> NewsPanel(game)
-            else -> CountriesPanel(game) { selectedId = it }
+            else -> MapPanel(game) { selectedRegionId = it }
         }
     }
 }
 
 @Composable
-private fun CountriesPanel(game: GameState, onOpen: (String) -> Unit) {
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+private fun MapPanel(game: GameState, onRegion: (String) -> Unit) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(12.dp)
     ) {
-        items(game.countries, key = { it.id }) { c ->
-            val atWar = game.isAtWar(c.id)
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(T.Card)
-                    .border(1.dp, T.Border, RoundedCornerShape(14.dp))
-                    .clickable { if (!c.isPlayer) onOpen(c.id) }
-                    .padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        c.name + if (c.isPlayer) " (ты)" else "",
-                        color = T.Text,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        if (c.side == Side.LIGHT) "Свет" else "Тьма",
-                        color = if (c.side == Side.LIGHT) T.Light else T.Dark,
-                        fontSize = 12.sp
-                    )
-                    if (!c.isPlayer) {
-                        Text(
-                            "Отношения: ${c.clampedRelations()}/100" +
-                                if (!c.recognizedByPlayer) " · не признана" else "",
-                            color = T.Dim,
-                            fontSize = 12.sp
-                        )
-                    }
-                    if (atWar) {
-                        Text("Война · усталость ${c.warFatigue}", color = T.Dark, fontSize = 12.sp)
+        Text(
+            "Тап по клетке — регион. Свои / союз / враг.",
+            color = T.Mute,
+            fontSize = 12.sp
+        )
+        Spacer(Modifier.height(8.dp))
+        // легенда
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            LegendDot(T.Player, "Ты")
+            LegendDot(T.Ally, "Союз")
+            LegendDot(T.Enemy, "Враг")
+        }
+        Spacer(Modifier.height(10.dp))
+
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            for (r in 0 until game.mapRows) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    for (c in 0 until game.mapCols) {
+                        val reg = game.regions.find { it.row == r && it.col == c }!!
+                        val owner = game.country(reg.ownerId)
+                        val color = when {
+                            reg.ownerId == "player" -> T.Player
+                            owner?.side == Side.LIGHT -> T.Ally
+                            else -> T.Enemy
+                        }
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(color.copy(alpha = 0.55f))
+                                .border(1.dp, color.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
+                                .clickable { onRegion(reg.id) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                reg.name.take(6),
+                                color = T.Text,
+                                fontSize = 9.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(2.dp)
+                            )
+                        }
                     }
                 }
             }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Твои регионы: ${game.regionsOf("player").size} · доход/год ~${game.regionsOf("player").sumOf { it.income }}",
+            color = T.Dim,
+            fontSize = 12.sp
+        )
+    }
+}
+
+@Composable
+private fun LegendDot(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(color))
+        Spacer(Modifier.width(4.dp))
+        Text(label, color = T.Mute, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun RegionPanel(
+    game: GameState,
+    reg: Region,
+    onClose: () -> Unit,
+    onOpenCountry: (String) -> Unit,
+    onCapture: () -> Unit
+) {
+    val owner = game.country(reg.ownerId)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text("← К карте", color = T.Accent, modifier = Modifier.clickable(onClick = onClose))
+        Spacer(Modifier.height(12.dp))
+        Text(reg.name, color = T.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text("Доход: ${reg.income} / год", color = T.Green, fontSize = 14.sp)
+        Spacer(Modifier.height(8.dp))
+        Text("Владелец: ${owner?.name ?: "?"}", color = T.Dim, fontSize = 15.sp)
+        if (owner != null && !owner.isPlayer) {
+            Text(
+                "Отношения: ${owner.clampedRelations()} · " +
+                    if (owner.recognizedByPlayer) "признана" else "не признана",
+                color = T.Mute,
+                fontSize = 13.sp
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+        if (owner != null && !owner.isPlayer) {
+            ActionBtn("Дипломатия: ${owner.name}") { onOpenCountry(owner.id) }
+            Spacer(Modifier.height(8.dp))
+            ActionBtn("Атаковать регион (100💰)") { onCapture() }
+        } else {
+            Text("Это твоя земля.", color = T.Green, fontSize = 14.sp)
         }
     }
 }
@@ -291,26 +472,22 @@ private fun CountryPanel(game: GameState, c: Country, onClose: () -> Unit) {
         Spacer(Modifier.height(8.dp))
         Text("Отношения: ${c.clampedRelations()} / ${c.effectiveRelationsCap()}", color = T.Dim)
         Text(
-            if (c.recognizedByPlayer) "Признана державой" else "Не признана (потолок отношений 50)",
+            if (c.recognizedByPlayer) "Признана державой" else "Не признана (потолок 50)",
             color = T.Mute,
             fontSize = 13.sp
         )
         Text("Усталость от войны: ${c.warFatigue}", color = if (c.warFatigue > 50) T.Dark else T.Dim)
-        Text("Стабильность: ${c.stability} · Счастье: ${c.happiness}", color = T.Dim, fontSize = 13.sp)
-
+        Text("Регионов: ${game.regionsOf(c.id).size}", color = T.Dim, fontSize = 13.sp)
         Spacer(Modifier.height(8.dp))
         Text("Религии:", color = T.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         c.religions.forEach {
             Text("${it.name}: ${it.percent}%", color = T.Dim, fontSize = 13.sp)
         }
-
         Spacer(Modifier.height(20.dp))
-
         if (!c.recognizedByPlayer) {
             ActionBtn("Признать державой") { game.recognize(c.id) }
             Spacer(Modifier.height(8.dp))
         }
-
         val war = game.wars.find {
             it.endYear == null &&
                 ((it.attackerId == "player" && it.defenderId == c.id) ||
@@ -321,15 +498,14 @@ private fun CountryPanel(game: GameState, c: Country, onClose: () -> Unit) {
         } else {
             ActionBtn("Объявить войну") { game.declareWar("player", c.id) }
         }
-
         Spacer(Modifier.height(8.dp))
-        ActionBtn("Попросить денег (отказ с торгом)") {
+        ActionBtn("Попросить денег") {
             game.news.add(
                 0,
-                com.luntik.twothrones.game.NewsItem(
+                NewsItem(
                     game.year,
                     "${c.name} отклонила просьбу о деньгах.",
-                    "Причина: просто так не дадим. За 300 денег — согласимся."
+                    "За 300 денег — согласимся."
                 )
             )
         }
